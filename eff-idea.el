@@ -2,7 +2,6 @@
 (cl-defstruct eff2)
 
 ;; effects have nominal, linear subtyping from single-inheritance of cl-structs
-
 (cl-defstruct eff1)
 (cl-defstruct my-eff1 (:include eff1))
 
@@ -50,71 +49,14 @@
 ;; downsides: fails the expression problem since all methods signatures must update when new effects are added, but this can be solved by hiding these implementations behind macros (g-make-effect) and (g-make-context) that will handle this via expansions.
 
 
-;; So what exactly are the semantics for multiple dispatch with "overlapping" methods?
-(cl-defstruct base)
-(cl-defstruct (child (:include base)))
-(setq child (make-child))
-
-(cl-defmethod foo ((a base) (b base) (c base))
-  (message "base"))
-(cl-defmethod foo ((a child) (b base) (c base))
-  (message "a spec")
-  (cl-call-next-method))
-(cl-defmethod foo ((a base) (b child) (c base))
-  (message "b spec")
-  (cl-call-next-method))
-(cl-defmethod foo ((a base) (b base) (c child))
-  (message "c spec")
-  (cl-call-next-method))
-(cl-defmethod foo ((a child) (b child) (c base))
-  (message "a, b spec")
-  (cl-call-next-method))
-(cl-defmethod foo ((a child) (b base) (c child))
-  (message "a, c spec")
-  (cl-call-next-method))
-(cl-defmethod foo ((a base) (b child) (c child))
-  (message "b, c spec")
-  (cl-call-next-method))
-(cl-defmethod foo ((a child) (b child) (c child))
-  (message "a, b, c spec")
-  (cl-call-next-method))
-
-(cl-defgeneric foo (a b c)
-  (:argument-precedence-order a b c))
-(foo child child child)
-
-(cl-defgeneric foo (a b c)
-  (:argument-precedence-order a c b))
-(foo child child child)
-
-(cl-defgeneric foo (a b c)
-  (:argument-precedence-order b a c))
-(foo child child child)
-
-(cl-defgeneric foo (a b c)
-  (:argument-precedence-order b c a))
-(foo child child child)
-
-(cl-defgeneric foo (a b c)
-  (:argument-precedence-order c a b))
-(foo child child child)
-
-(cl-defgeneric foo (a b c)
-  (:argument-precedence-order c b a))
-(foo child child child)
-
-;; so effect precedence is a total order based on inspecting arguments. This constrains the way row polymorphism works, since 'ab will be interpreted before 'bcd assuming left to right effect precedence. so 'ab runs, then 'bcd might not be selected since b was dispatched, even though c,d still remain. But that will be fine
-
-;; effects have a total order. effect handlers must respect that order. so ('a 'c) gets called before ('b 'c). can we tag effects as algebraic? effects can commute with each other or not. priority does not affect algebraic effects, only non-algebraic ones.
-
-;;  effect handler type hierarchy: null < algebraic < scoped < masked
-;; - null -> effect not handled, deferred
-;; - scoped -> effect must interact explicitly with others to determine semantics
-;; - algebraic -> effect can be interpreted whenever as it is commutative over substitution
-;; - masked -> first handle unmasked effects, then handle masked ones.
-;;
-;; question: is this the proper order for interpreting them? first handle masked ones because those are plucked out. then scoped because they dont commute. then alg cuz they commute. then null
-;; - 
-
-;; mask is a block that nulls out effects
-;; when effect handler is called
+;; cl-generic: eff-tagged op interface
+;; 
+;; cl-defmethod: handler for eff/op
+;; 
+;; cl-defgeneric: interface for row-polymorphic effect interpreter
+;; 
+;; cl-defmethod (most generic): any unhandled effects will be tried against defaults. if any remain unhandled an error will be thrown.
+;; 
+;; cl-defmethod (specialized args): ad-hoc semantics for a combination of effects, continue using (cl-call-next-method)
+;; 
+;; cl-defmethod :around -> scoped effect handler to allow explicit eval/apply semantics to manipulate k using (cl-call-next-method)
