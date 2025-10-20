@@ -46,9 +46,11 @@
   `((font . ((size . ,(defface g--attr-font-size '((default . (:height 160))) "Gmacs internals -- DO NOT EDIT"))
              (monospace . ,(defface g--attr-font-monospace '((default . (:family "Roboto Mono"))) "Gmacs internals -- DO NOT EDIT"))
              (proportional . ,(defface g--attr-font-proportional '((default . (:family "Roboto"))) "Gmacs internals -- DO NOT EDIT"))
+             (straight . ,(defface g--attr-font-straight '((default . (:slant normal))) "Gmacs internals -- DO NOT EDIT"))
              (italic . ,(defface g--attr-font-italic '((default . (:slant italic))) "Gmacs internals -- DO NOT EDIT"))
              (regular . ,(defface g--attr-font-regular '((default . (:weight light))) "Gmacs internals -- DO NOT EDIT"))
-             (emph . ,(defface g--attr-font-emph '((default . (:weight regular))) "Gmacs internals -- DO NOT EDIT"))))
+             (emph . ,(defface g--attr-font-emph '((default . (:weight regular))) "Gmacs internals -- DO NOT EDIT"))
+             (normal . ,(defface g--attr-font-normal '((default . (:width regular))) "Gmacs internals -- DO NOT EDIT"))))
     (color . ((text . ((base . ,(defface g--attr-text-base `((default . (:foreground ,nord0))) "Gmacs internals -- DO NOT EDIT"))
                        (secondary . ,(defface g--attr-text-secondary `((default . (:foreground ,nord1))) "Gmacs internals -- DO NOT EDIT"))
                        (tertiary . ,(defface g--attr-text-tertiary `((default . (:foreground ,nord2))) "Gmacs internals -- DO NOT EDIT"))
@@ -58,9 +60,9 @@
                      (tertiary . ,(defface g--attr-ui-tertiary `((default . (:background ,nord5))) "Gmacs internals -- DO NOT EDIT"))
                      (quarternary . ,(defface g--attr-ui-quarternary `((default . (:background ,nord4))) "Gmacs internals -- DO NOT EDIT"))))
               (accent . ((default . ,(defface g--attr-accent-default `((default . (:foreground ,nord7))) "Gmacs internals -- DO NOT EDIT"))
-                         (prominent . ,(defface g--attr-accent-prominent `((default . (:foreground ,nord8))) "Gmacs internals -- DO NOT EDIT"))
-                         (secondary . ,(defface g--attr-accent-secondary `((default . (:foreground ,nord9))) "Gmacs internals -- DO NOT EDIT"))
-                         (tertiary . ,(defface g--attr-accent-tertiary `((default . (:foreground ,nord10))) "Gmacs internals -- DO NOT EDIT"))))
+                         (secondary . ,(defface g--attr-accent-secondary `((default . (:foreground ,nord8))) "Gmacs internals -- DO NOT EDIT"))
+                         (tertiary . ,(defface g--attr-accent-tertiary `((default . (:foreground ,nord9))) "Gmacs internals -- DO NOT EDIT"))
+                         (quarternary . ,(defface g--attr-accent-quarternary `((default . (:foreground ,nord10))) "Gmacs internals -- DO NOT EDIT"))))
               (signal . ((error . ,(defface g--attr-signal-error `((default . (:foreground ,nord11))) "Gmacs internals -- DO NOT EDIT"))
                          (issue . ,(defface g--attr-signal-issue `((default . (:foreground ,nord12))) "Gmacs internals -- DO NOT EDIT"))
                          (warn . ,(defface g--attr-signal-warn `((default . (:foreground ,nord13))) "Gmacs internals -- DO NOT EDIT"))
@@ -71,10 +73,32 @@
   (defface g-default `((default . (:inherit (,.font.size
                                              ,.font.monospace
                                              ,.font.regular
+                                             ,.font.straight
+                                             ,.font.normal
                                              ,.color.text.base
                                              ,.color.ui.background)))) "Default props for frame text")
   (defface g-highlight `((default . (:inherit (,.color.ui.secondary g-default-text)))) "Highlight background shade")
   (defface g-lowlight `((default . (:inherit (,.color.ui.tertiary g-default-text)))) "Dimmer Highlight"))
+
+
+(defconst g--default-face-override
+ `(default ((default . (:family ,(face-attribute 'g-default :family nil t)
+                        :foundry nil
+                        :width ,(face-attribute 'g-default :width nil t)
+                        :height ,(face-attribute 'g-default :height nil t)
+                        :weight ,(face-attribute 'g-default :weight nil t)
+                        :slant ,(face-attribute 'g-default :slant nil t)
+                        :foreground ,(face-attribute 'g-default :foreground nil t)
+                        :distant-foreground nil
+                        :background ,(face-attribute 'g-default :background nil t)
+                        :underline nil
+                        :overline nil
+                        :strike-through nil
+                        :box nil
+                        :inverse-video nil
+                        :stipple nil
+                        :inherit nil
+                        :extend nil)))))
 
 (defun g--use (face)
   `((default .  (
