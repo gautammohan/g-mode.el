@@ -82,14 +82,14 @@
 
 
 (defconst g--default-face-override
- `(default ((default . (:family ,(face-attribute 'g-default :family nil t)
+  `((default . (:family ,(face-attribute 'g-default :family nil t)
                         :foundry nil
                         :width ,(face-attribute 'g-default :width nil t)
                         :height ,(face-attribute 'g-default :height nil t)
                         :weight ,(face-attribute 'g-default :weight nil t)
                         :slant ,(face-attribute 'g-default :slant nil t)
                         :foreground ,(face-attribute 'g-default :foreground nil t)
-                        :distant-foreground nil
+                        :distant-foreground ,(face-attribute 'g-default :foreground nil t)
                         :background ,(face-attribute 'g-default :background nil t)
                         :underline nil
                         :overline nil
@@ -98,7 +98,8 @@
                         :inverse-video nil
                         :stipple nil
                         :inherit nil
-                        :extend nil)))))
+                        :extend nil)))
+ "The default face cannot have any attributes unspecified, and it is thus the only face that cannot be specified using the :inherit-based composition method. Therefore its values must be explicitly set from values interpolated  g-default,.")
 
 (defun g--use (face)
   `((default .  (

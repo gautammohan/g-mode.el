@@ -16,28 +16,8 @@
 
 (deftheme g-base "Gmacs base theme")
 
-;; (custom-theme-set-faces 'g-base
-;;                         `(default . ((default . (
-;;                                                 :family ,(face-attribute 'g-default :family nil t)
-;;                                                 :foundry nil
-;;                                                 :width normal
-;;                                                 :height ,(face-attribute 'g-default :height nil t)
-;;                                                 :weight ,(face-attribute 'g-default :weight nil t)
-;;                                                 :slant normal
-;;                                                 :foreground ,(face-attribute 'g-default :foreground nil t)
-;;                                                 :distant-foreground nil
-;;                                                 :background ,(face-attribute 'g-default :background nil t)
-;;                                                 :underline nil
-;;                                                 :overline nil
-;;                                                 :strike-through nil
-;;                                                 :box nil
-;;                                                 :inverse-video nil
-;;                                                 :stipple nil
-;;                                                 :inherit nil
-;;                                                 :extend nil)))))
-
-
 (custom-theme-set-faces 'g-base
-                        g--default-face-override)
+                        `(default ,g--default-face-override)
+                        `(region ,(g--use 'g-highlight)))
 (provide-theme 'g-base)
 
