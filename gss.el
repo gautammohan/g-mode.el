@@ -27,55 +27,137 @@
   "Gmacs Faces"
   :group 'g)
 
-  ;; Default theme colors use Nord
+(defconst gss--default-palette
+  `((ivory            . "#FFFFEB")
+    (timberwolf       . "#D6D6D6")
+    (kiri-same        . "#979797")
+    (take-sumi        . "#363636")
+    (yama-guri        . "#614130")
+    (syun-gyo         . "#443031")
+    (tsukushi         . "#744420")
+    (ina-ho           . "#966618")
+    (to-ro            . "#ed7c0d")
+    (yu-yake          . "#f04820")
+    (fuyu-gaki        . "#d84020")
+    (momiji           . "#e34343")
+    (hana-ikada       . "#f77f87")
+    (kosumosu         . "#f5534b")
+    (tsutsuji         . "#d03e66")
+    (yama-budo        . "#942064")
+    (murasaki-shikibu . "#8c54a4")
+    (ajisai           . "#4762c2")
+    (asa-gao          . "#005ad2")
+    (shin-kai         . "#374073")
+    (tsuki-yo         . "#3f7e9e")
+    (ama-iro          . "#189bcb")
+    (tsuyu-kusa       . "#255eae")
+    (kon-peki         . "#156ab2")
+    (rikka            . "#3a83b6")
+    (ku-jaku          . "#187981")
+    (syo-ro           . "#008880")
+    (sui-gyoku        . "#2d8065")
+    (shin-ryoku       . "#008a65")
+    (chiku-rin        . "#90a527")
+    (hotaru-bi        . "#e7dc5f"))
+  "Color values taken from Pilot's Iroshizuku Ink line + some custom additions")
+
+
+(defconst gss--spec nil)
+
+(defconst gss-spec-types '(color style))
+
+;; define a spec fragment which will ultimately be merged into a complete face. type must be a value specified by gss-spec-types (TODO). if palette is nil explicitly then return the uninterned spec symbol itself. TODO - also deal with non-interned palette symbols
+(cl-defmacro gss--defspec (name &key type gui tty (palette 'gss--spec))
+  `(let ((spec (gensym (format "%s:" (symbol-name ,type)))))
+     (put spec 'gui ,gui)
+     (put spec 'tty ,tty)
+     (put spec 'type ,type)
+     (setf (alist-get ',name (alist-get ,type ,palette)) spec)))
+
+;; Reify a gss spec fragment into an actual Emacs face-spec. each spec must have its own function that provides relevant information.
+
+;; layer - :foreground or :background, variant is light or dark
+;; reify all defined specs into base face defns and populate the palette namespace
+(cl-defun gss--reify (spec prefix context)
+  ;; for each spec
+  ;;   reify/spec
+  ;;     if singleton: gen facename, set .style.<name> = (set-face-spec name spec)
+  ;;     else: for each (name, spec), do the singleton thing.
+  (let* ((face-sym (lambda (&rest qualifiers)
+                     (intern (string-join (cons (symbol-name prefix) qualifiers) "-"))))
+         (reifier (intern (concat
+                           "gss--reify/"
+                           (symbol-name (get 'type spec)))))
+         (result ((funcall reifier spec context))))
+    (if (hash-table-p result)
+        (map-apply (lambda (id spec)
+                     `(,id . (face-spec-set ,(funcall face-sym id) ,spec))))
+      (face-spec-set ,(funcall face-sym) ,spec))))
+
+;; layer - :foreground or :background, variant is light or dark
+(cl-defun gss--reify/color (spec variant)
+  (let* ((extract (cond
+                   ((eq variant 'light) #'car)
+                   ((eq variant 'dark) #'cdr)
+                   (t (progn 
+                        (display-warning 'gss
+                                         (format "Unknown variant %s" variant)
+                                         :warning)
+                        #'car))))
+         (result (cl-loop for (layer . name) in '((:foreground . fg) (:background . bg)) collect
+                          `(,name .  (((type graphic) . (,layer ,@(funcall extract (get spec 'gui))))
+                                      ((type tty) . (,layer ,@(funcall extract (get spec 'tty)))))))))
+    (map-into result 'hash-table)))
+
+(cl-defun gss--reify/style (spec)
+  `(((type graphic) . ,(get spec 'gui))
+    ((type tty) . ,(get spec 'tty))))
+gss--reify-spec/style
+
+
+(defconst gss--variant 'light)
+
+(defconst gss--attributes nil)
+
+(cl-defmacro gss-group (name &key (colors nil) (styles nil) (relative nil))
+
+  )
+'(group ((color ((bar . blah) (baz . bloop)))
+         (face . ((default . zap) (emph)))))
+(gss-face 'foo :fg .bar :bg .baz :decor )
+
+(defface g--default nil "Default Gmacs Face")
+
+(defconst gss--colors nil)
+(cl-defmacro gss-color (name light dark &key (palette gss--default-palette))
+  `(let-alist ',palette
+     (setf (alist-get 'light (alist-get ,name gss--colors)) ,light)
+     (setf (alist-get 'dark (alist-get ,name gss--colors)) ,dark)))
+
+(gss-color 'text-body .syun-gyo .timberwolf)
+(gss-color 'text-subtle .ina-ho .kiri-same)
+(gss-color 'ui-base .ivory .take-sumi)
+
+(defconst gss--props nil)
+(cl-defmacro gss-prop (group name face-attr)
+  (setf (alist-get ,name (alist-get ,group gss--props)) ,face-attr))
+(gss-prop 'font 'size '())
+
+(cl-defmacro gss-face (name group &rest blah &key (fg nil) (bg nil))
+  (format "name: %s group: %s blah: %s fg: %s bg: %s" name group blah fg bg))
+
+
+;; Default theme colors use Nord
 (defconst gss-attributes
-  (let (;; Polar Night: darkest to brightest
-        (nord0 "#2E3440")
-        (nord1 "#3B4252")
-        (nord2 "#434C5E")
-        (nord3 "#4C566A")
-        ;; Snow Storm (w/custom white): darkest to brightest
-        (nord4 "#D8DEE9")
-        (nord5 "#E5E9F0")
-        (nord6 "#ECEFF4")
-        (nordw "#F8FAFC")
-        ;; Frost: most-to-least contrasting
-        (nord7 "#8FBCBB")
-        (nord8 "#88C0D0")
-        (nord9 "#81A1C1")
-        (nord10 "#5E81AC")
-        ;; Aurora: red, orange, yellow, green, purple
-        (nord11 "#BF616A")
-        (nord12 "#D08770")
-        (nord13 "#EBCB8B")
-        (nord14 "#A3BE8C")
-        (nord15 "#B48EAD"))
-    `((font . ((size . ,(defface gss--attr-font-size '((default . (:height 160))) "Gmacs internals -- DO NOT EDIT"))
-               (monospace . ,(defface gss--attr-font-monospace '((default . (:family "Roboto Mono"))) "Gmacs internals -- DO NOT EDIT"))
-               (proportional . ,(defface gss--attr-font-proportional '((default . (:family "Roboto"))) "Gmacs internals -- DO NOT EDIT"))
-               (straight . ,(defface gss--attr-font-straight '((default . (:slant normal))) "Gmacs internals -- DO NOT EDIT"))
-               (italic . ,(defface gss--attr-font-italic '((default . (:slant italic))) "Gmacs internals -- DO NOT EDIT"))
-               (regular . ,(defface gss--attr-font-regular '((default . (:weight regular))) "Gmacs internals -- DO NOT EDIT"))
-               (emph . ,(defface gss--attr-font-emph '((default . (:weight bold))) "Gmacs internals -- DO NOT EDIT"))
-               (normal . ,(defface gss--attr-font-normal '((default . (:width regular))) "Gmacs internals -- DO NOT EDIT"))))
-      (color . ((text . ((base . ,(defface gss--attr-text-base `((default . (:foreground ,nord0))) "Gmacs internals -- DO NOT EDIT"))
-                         (secondary . ,(defface gss--attr-text-secondary `((default . (:foreground ,nord1))) "Gmacs internals -- DO NOT EDIT"))
-                         (tertiary . ,(defface gss--attr-text-tertiary `((default . (:foreground ,nord2))) "Gmacs internals -- DO NOT EDIT"))
-                         (quarternary . ,(defface gss--attr-text-quarternary `((default . (:foreground ,nord3))) "Gmacs internals -- DO NOT EDIT"))))
-                (ui . ((background . ,(defface gss--attr-ui-background `((default . (:background ,nordw))) "Gmacs internals -- DO NOT EDIT"))
-                       (secondary . ,(defface gss--attr-ui-secondary `((default . (:background ,nord6))) "Gmacs internals -- DO NOT EDIT"))
-                       (tertiary . ,(defface gss--attr-ui-tertiary `((default . (:background ,nord5))) "Gmacs internals -- DO NOT EDIT"))
-                       (quarternary . ,(defface gss--attr-ui-quarternary `((default . (:background ,nord4))) "Gmacs internals -- DO NOT EDIT"))))
-                (accent . ((default . ,(defface gss--attr-accent-default `((default . (:foreground ,nord7))) "Gmacs internals -- DO NOT EDIT"))
-                           (secondary . ,(defface gss--attr-accent-secondary `((default . (:foreground ,nord8))) "Gmacs internals -- DO NOT EDIT"))
-                           (tertiary . ,(defface gss--attr-accent-tertiary `((default . (:foreground ,nord9))) "Gmacs internals -- DO NOT EDIT"))
-                           (quarternary . ,(defface gss--attr-accent-quarternary `((default . (:foreground ,nord10))) "Gmacs internals -- DO NOT EDIT"))))
-                (signal . ((error . ,(defface gss--attr-signal-error `((default . (:foreground ,nord11))) "Gmacs internals -- DO NOT EDIT"))
-                           (issue . ,(defface gss--attr-signal-issue `((default . (:foreground ,nord12))) "Gmacs internals -- DO NOT EDIT"))
-                           (warn . ,(defface gss--attr-signal-warn `((default . (:foreground ,nord13))) "Gmacs internals -- DO NOT EDIT"))
-                           (ok . ,(defface gss--attr-signal-ok `((default . (:foreground ,nord14))) "Gmacs internals -- DO NOT EDIT"))
-                           (alt . ,(defface gss--attr-signal-alt `((default . (:foreground ,nord15))) "Gmacs internals -- DO NOT EDIT"))))))
-      (mod . ((extend . ,(defface gss--attr-mod-extend '((default . (:extend t))) "Gmacs internals -- DO NOT EDIT")))))))
+  `((font . ((size . ,(defface gss--attr-font-size '((default . (:height 160))) "Gmacs internals -- DO NOT EDIT"))
+             (monospace . ,(defface gss--attr-font-monospace '((default . (:family "Roboto Mono"))) "Gmacs internals -- DO NOT EDIT"))
+             (proportional . ,(defface gss--attr-font-proportional '((default . (:family "Roboto"))) "Gmacs internals -- DO NOT EDIT"))
+             (straight . ,(defface gss--attr-font-straight '((default . (:slant normal))) "Gmacs internals -- DO NOT EDIT"))
+             (italic . ,(defface gss--attr-font-italic '((default . (:slant italic))) "Gmacs internals -- DO NOT EDIT"))
+             (regular . ,(defface gss--attr-font-regular '((default . (:weight regular))) "Gmacs internals -- DO NOT EDIT"))
+             (emph . ,(defface gss--attr-font-emph '((default . (:weight bold))) "Gmacs internals -- DO NOT EDIT"))
+             (normal . ,(defface gss--attr-font-normal '((default . (:width regular))) "Gmacs internals -- DO NOT EDIT"))))
+    (mod . ((extend . ,(defface gss--attr-mod-extend '((default . (:extend t))) "Gmacs internals -- DO NOT EDIT"))))))
 
 (cl-defmacro gss-set (face &rest style)
   "Set a face to obey the style attrs specified. style arguments may
