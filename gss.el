@@ -112,7 +112,22 @@
 (cl-defun gss--reify/style (spec)
   `(((type graphic) . ,(get spec 'gui))
     ((type tty) . ,(get spec 'tty))))
-gss--reify-spec/style
+
+(cl-defun gss--update-palettes (context &rest (palettes '(gss--global)))
+  (cl-loop for palette in palettes
+           for type in gss-spec-types
+           for (name . spec) in (alist-get type palette) do
+           (setf (alist-get name (alist-get 'base palette)) (gss--reify spec context))))
+
+(cl-defmacro gss-set (face palette &rest style)
+  `(let-alist ,palette
+     (face-spec-reset-face ,face)
+     (set-face-attribute ,face nil :inherit (list ,@style))))
+
+(cl-defmacro gss-defface (face docstr palette &rest style)
+  `(let-alist ,palette
+     (defface ,face '(t . (list :inherit (list ,@style))) ,docstr :group 'gss-faces)))
+
 
 
 (defconst gss--variant 'light)
