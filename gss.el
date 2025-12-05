@@ -119,6 +119,16 @@
            for (name . spec) in (alist-get type palette) do
            (setf (alist-get name (alist-get 'base palette)) (gss--reify spec context))))
 
+(cl-defmacro gss-with-palette (palette &rest body)
+  `(cl-macrolet ((gss-set (face &rest styles)
+                   `(progn (face-spec-reset-face ,face)
+                           (set-face-attribute ,face nil :inherit (list ,@styles))))
+                 (gss-defface (face &rest styles)
+                   `(progn (defface ,face nil "")
+                           (gss-set ,face ,@styles))))
+     (let-alist ,palette
+       ,@body)))
+
 (cl-defmacro gss-set (face palette &rest style)
   `(let-alist ,palette
      (face-spec-reset-face ,face)
