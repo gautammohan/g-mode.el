@@ -113,30 +113,37 @@
   `(((type graphic) . ,(get spec 'gui))
     ((type tty) . ,(get spec 'tty))))
 
-(cl-defun gss--update-palettes (context &rest (palettes '(gss--global)))
+(cl-defun gss--update-palettes (context &key (palettes '(gss--global)))
   (cl-loop for palette in palettes
            for type in gss-spec-types
-           for (name . spec) in (alist-get type palette) do
-           (setf (alist-get name (alist-get 'base palette)) (gss--reify spec context))))
+           for (name . spec) in (alist-get type palette)
+           with prefix = (string-join (mapcar #'symbol-name (list palette type name)) "-")
+           do (setf (alist-get name
+                               (alist-get type
+                                          (alist-get 'style palette)))
+                    (gss--reify spec prefix context))))
 
 (cl-defmacro gss-with-palette (palette &rest body)
   `(cl-macrolet ((gss-set (face &rest styles)
                    `(progn (face-spec-reset-face ,face)
                            (set-face-attribute ,face nil :inherit (list ,@styles))))
-                 (gss-defface (face &rest styles)
-                   `(progn (defface ,face nil "")
-                           (gss-set ,face ,@styles))))
+                 (gss-defface (face doc &rest styles)
+                   `(progn (defface ,face nil ,doc)
+                           (gss-set ,face ,@styles)))
+                 (gss-defstyle (face &rest styles)
+                   `(progn (gss-defface ,face nil "Internal Style Def")
+                           (setf (alist-get ,face ,,palette) ,face))))
      (let-alist ,palette
        ,@body)))
 
-(cl-defmacro gss-set (face palette &rest style)
-  `(let-alist ,palette
-     (face-spec-reset-face ,face)
-     (set-face-attribute ,face nil :inherit (list ,@style))))
+(cl-defmacro gss-set (&rest body)
+  `(gss-with-palette gss--global (gss-set ,@body)))
 
-(cl-defmacro gss-defface (face docstr palette &rest style)
-  `(let-alist ,palette
-     (defface ,face '(t . (list :inherit (list ,@style))) ,docstr :group 'gss-faces)))
+(cl-defmacro gss-defface (&rest body)
+  `(gss-with-palette gss--global (gss-defface ,@body)))
+
+(cl-defmacro gss-defstyle (&rest body)
+  `(gss-with-palette gss--global (gss-defstyle ,@body)))
 
 
 
