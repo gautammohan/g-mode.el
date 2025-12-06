@@ -64,7 +64,7 @@
 
 (defconst gss--spec nil)
 
-(defconst gss-spec-types '(color style))
+(defconst gss-spec-types '(color attr))
 
 ;; define a spec fragment which will ultimately be merged into a complete face. type must be a value specified by gss-spec-types (TODO). if palette is nil explicitly then return the uninterned spec symbol itself. TODO - also deal with non-interned palette symbols
 (cl-defmacro gss--defspec (name &key type gui tty (palette 'gss--spec))
@@ -114,14 +114,12 @@
     ((type tty) . ,(get spec 'tty))))
 
 (cl-defun gss--update-palettes (context &key (palettes '(gss--global)))
-  (cl-loop for palette in palettes
-           for type in gss-spec-types
-           for (name . spec) in (alist-get type palette)
-           with prefix = (string-join (mapcar #'symbol-name (list palette type name)) "-")
-           do (setf (alist-get name
-                               (alist-get type
-                                          (alist-get 'style palette)))
-                    (gss--reify spec prefix context))))
+  (cl-loop for palette in palettes do
+           (cl-loop for type in gss-spec-types do
+                    (cl-loop for (name . spec) in  (alist-get type (symbol-value palette))
+                             for prefix = (string-join (mapcar #'symbol-name (list palette type name)) "-")
+                             do (setf (alist-get name (alist-get type (alist-get 'style (symbol-value palette))))
+                                      (gss--reify spec prefix context))))))
 
 (cl-defmacro gss-with-palette (palette &rest body)
   `(cl-macrolet ((gss-set (face &rest styles)
@@ -131,7 +129,7 @@
                    `(progn (defface ,face nil ,doc)
                            (gss-set ,face ,@styles)))
                  (gss-defstyle (face &rest styles)
-                   `(progn (gss-defface ,face nil "Internal Style Def")
+                   `(progn (gss-defface ,face nil "GSS Internal Style Def")
                            (setf (alist-get ,face ,,palette) ,face))))
      (let-alist ,palette
        ,@body)))
