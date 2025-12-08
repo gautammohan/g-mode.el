@@ -61,8 +61,9 @@
     (hotaru-bi        . "#e7dc5f"))
   "Color values taken from Pilot's Iroshizuku Ink line + some custom additions")
 
-
-(defconst gss--spec nil)
+(defun gss--symcat (&rest symbols)
+  "Concatenate a list of symbols using \"-\""
+  (intern (string-join (mapcar #'symbol-name symbols) "-")))
 
 (defconst gss-spec-types '(color attr))
 
@@ -78,21 +79,22 @@
 
 ;; layer - :foreground or :background, variant is light or dark
 ;; reify all defined specs into base face defns and populate the palette namespace
-(cl-defun gss--reify (spec prefix context)
+(cl-defun gss--reify (spec face-sym context)
   ;; for each spec
   ;;   reify/spec
   ;;     if singleton: gen facename, set .style.<name> = (set-face-spec name spec)
   ;;     else: for each (name, spec), do the singleton thing.
-  (let* ((face-sym (lambda (&rest qualifiers)
-                     (intern (string-join (cons (symbol-name prefix) qualifiers) "-"))))
-         (reifier (intern (concat
+  (let* ((reifier (intern (concat
                            "gss--reify/"
-                           (symbol-name (get 'type spec)))))
-         (result ((funcall reifier spec context))))
+                           (symbol-name (get spec 'type)))))
+         (result (funcall reifier spec context)))
     (if (hash-table-p result)
-        (map-apply (lambda (id spec)
-                     `(,id . (face-spec-set ,(funcall face-sym id) ,spec))))
-      (face-spec-set ,(funcall face-sym) ,spec))))
+        (map-apply (lambda (id spec) (let ((face (gss--symcat face-sym id)))
+                                       (face-spec-set face spec)
+                                       (cons id face)))
+                   result)
+      (progn (face-spec-set face-sym result)
+             face-sym))))
 
 ;; layer - :foreground or :background, variant is light or dark
 (cl-defun gss--reify/color (spec variant)
@@ -105,19 +107,22 @@
                                          :warning)
                         #'car))))
          (result (cl-loop for (layer . name) in '((:foreground . fg) (:background . bg)) collect
-                          `(,name .  (((type graphic) . (,layer ,@(funcall extract (get spec 'gui))))
-                                      ((type tty) . (,layer ,@(funcall extract (get spec 'tty)))))))))
+                          `(,name .  ((((type graphic)) . (,layer ,(funcall extract (get spec 'gui))))
+                                      (((type tty)) . (,layer ,(funcall extract (get spec 'tty)))))))))
+
     (map-into result 'hash-table)))
 
-(cl-defun gss--reify/style (spec)
-  `(((type graphic) . ,(get spec 'gui))
-    ((type tty) . ,(get spec 'tty))))
+(cl-defun gss--reify/attr (spec variant)
+  `((((type graphic)) . ,(get spec 'gui))
+    (((type tty)) . ,(get spec 'tty))))
+gss--reify/attr
+
 
 (cl-defun gss--update-palettes (context &key (palettes '(gss--global)))
   (cl-loop for palette in palettes do
            (cl-loop for type in gss-spec-types do
                     (cl-loop for (name . spec) in  (alist-get type (symbol-value palette))
-                             for prefix = (string-join (mapcar #'symbol-name (list palette type name)) "-")
+                             for prefix = (intern (string-join (mapcar #'symbol-name (list palette type name)) "-"))
                              do (setf (alist-get name (alist-get type (alist-get 'style (symbol-value palette))))
                                       (gss--reify spec prefix context))))))
 
