@@ -20,8 +20,7 @@
 
 (require 'gss)
 
-(provide 'g)
-(defconst gss--default-palette
+(defconst gss--default-colors
   `((ivory            . "#FFFFEB")
     (timberwolf       . "#D6D6D6")
     (kiri-same        . "#979797")
@@ -52,7 +51,20 @@
     (sui-gyoku        . "#2d8065")
     (shin-ryoku       . "#008a65")
     (chiku-rin        . "#90a527")
-    (hutaru-bi        . "#e7dc5f"))
+    (hotaru-bi        . "#e7dc5f"))
   "Color values taken from Pilot's Iroshizuku Ink line + some custom additions")
+
+
+(gss-defattr mono '(:family "Roboto Mono"))
+(gss-defattr variable '(:family "Roboto"))
+(gss-defattr emph '(:weight semi-bold))
+(gss-defattr italic '(:slant italic))
+(let-alist gss--default-colors
+  (gss-defcolor text `(,.syun-gyo . ,.timberwolf))
+  (gss-defcolor canvas `(,.ivory . ,.take-sumi)))
+(setq ctx '((variant light)))
+(gss--update-palettes ctx)
+
+(provide 'g)
 
 ;;; g.el ends here
