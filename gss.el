@@ -9,15 +9,18 @@
 ;; URL: https://github.com/gautammohan/g-mode.el
 ;;; Commentary:
 
-;; This file provides "GSS", a Sass/CSS-inspired system for specifying faces using style attributes. Style attributes are specified as .dotted.names which resolve to unique "base" style faces according to the namespace defined in gss-attributes. All GSS faces inherit from those base styles, so any alterations to them are inherited by all dependent faces.
-;;
-;; "Mixin" faces can also be defined to abstract sets of related style attributes and used to specify style attributes.
-;;
-;; TODO:
-;; - implement (gss-attr ...) to create attributes and add them to the namespace
-;; - figure out a customization interface/variant swapping
-;; - figure out how to pass raw face attributes (for g-default)
+;; This file provides "GSS", a system to specify Emacs faces using
+;; style attributes dependent on custom-defined palettes.
 
+;; Each style attribute is built recursively from other style
+;; attributes or "gss specs",which are atomic definitions of emacs
+;; face-spec properties. GSS styles are stored in a "palette". Each
+;; palette acts as an independent namespace to store specs and styles
+;; and provides a context to the gss-set/defface/defstyle commands.
+
+;; These commands accept concise .dotted.notation to traverse the
+;; palette namespace and specify multiple specs and styles that a face
+;; inherits from.
 
 ;;; Code:
 
@@ -27,40 +30,7 @@
   "Gmacs Faces"
   :group 'g)
 
-(defconst gss--default-palette
-  `((ivory            . "#FFFFEB")
-    (timberwolf       . "#D6D6D6")
-    (kiri-same        . "#979797")
-    (take-sumi        . "#363636")
-    (yama-guri        . "#614130")
-    (syun-gyo         . "#443031")
-    (tsukushi         . "#744420")
-    (ina-ho           . "#966618")
-    (to-ro            . "#ed7c0d")
-    (yu-yake          . "#f04820")
-    (fuyu-gaki        . "#d84020")
-    (momiji           . "#e34343")
-    (hana-ikada       . "#f77f87")
-    (kosumosu         . "#f5534b")
-    (tsutsuji         . "#d03e66")
-    (yama-budo        . "#942064")
-    (murasaki-shikibu . "#8c54a4")
-    (ajisai           . "#4762c2")
-    (asa-gao          . "#005ad2")
-    (shin-kai         . "#374073")
-    (tsuki-yo         . "#3f7e9e")
-    (ama-iro          . "#189bcb")
-    (tsuyu-kusa       . "#255eae")
-    (kon-peki         . "#156ab2")
-    (rikka            . "#3a83b6")
-    (ku-jaku          . "#187981")
-    (syo-ro           . "#008880")
-    (sui-gyoku        . "#2d8065")
-    (shin-ryoku       . "#008a65")
-    (chiku-rin        . "#90a527")
-    (hotaru-bi        . "#e7dc5f"))
-  "Color values taken from Pilot's Iroshizuku Ink line + some custom additions")
-
+(setq gss--global nil)
 (defconst gss-spec-types '(color attr))
 
 ;; define a spec fragment which will ultimately be merged into a complete face. type must be a value specified by gss-spec-types (TODO). if palette is nil explicitly then return the uninterned spec symbol itself. TODO - also deal with non-interned palette symbols
@@ -71,14 +41,15 @@
      (put spec 'type ,type)
      (setf (alist-get ',name (alist-get ,type ,palette)) spec)))
 
-;; Reify a gss spec fragment into an actual Emacs face-spec. each spec must have its own function that provides relevant information.
+;; Reify a gss spec fragment into an actual Emacs face-spec. each
+;; defined spec type must provide its own implementation function as
+;; gss--reify/<spec>, similar to the use-package convention.
 
-;; reify all defined specs into base face defns and populate the palette namespace
 (cl-defun gss--reify (spec face-sym context)
   ;; for each spec
   ;;   reify/spec
   ;;     if singleton: gen facename, set .style.<name> = (set-face-spec name spec)
-  ;;     else: for each (name, spec), do the singleton thing.
+  ;;     else: for each (name, spec), .name = (set-face-spec name spec)
   (let* ((reifier (intern (concat
                            "gss--reify/"
                            (symbol-name (get spec 'type)))))
@@ -91,6 +62,7 @@
       (progn (face-spec-set face-sym result)
              face-sym))))
 
+;; Reify a color as .color.<fg,bg>, taking into account the theme variant.
 (cl-defun gss--reify/color (spec context)
   (let* ((variant (alist-get 'variant context))
          (extract (cond
@@ -107,13 +79,13 @@
 
     (map-into result 'hash-table)))
 
+;; Reify a font attribute directly
 (cl-defun gss--reify/attr (spec context)
   `((((type graphic)) . ,(get spec 'gui))
     (((type tty)) . ,(get spec 'tty))))
 
-(cl-defun gss--setstyle (style palette)
-  (setf (alist-get style (alist-get 'style palette))  style))
-
+;; Compute each spec as a face according to the context. The
+;; namespace structure of each spec is cloned under .style in the palette
 (cl-defun gss--update-palettes (context &key (palettes '(gss--global)))
   (cl-loop for palette in palettes do
            (cl-loop for type in gss-spec-types do
@@ -122,7 +94,14 @@
                              do (setf (alist-get name (alist-get type (alist-get 'style (symbol-value palette))))
                                       (gss--reify spec prefix context))))))
 
+(cl-defun gss--setstyle (style palette)
+  (setf (alist-get style (alist-get 'style palette))  style))
+
+;; Provide a palette context to resolve style attribute definitions
+;; for all gss-* functions in the body.
 (cl-defmacro gss-with-palette (palette &rest body)
+  "Use the provided palette to resolve style attributes for the gss
+functions in the body."
   `(cl-macrolet ((gss-set (face &rest styles)
                    `(progn (face-spec-reset-face ,face)
                            (set-face-attribute ,face nil :inherit (list ,@styles))))
@@ -134,6 +113,10 @@
                            (gss--setstyle ',face ',,palette))))
      (let-alist (alist-get 'style ,palette)
        ,@body)))
+
+;; Each of the global gss-* functions expands to gss-with-palette
+;; pre-filled with the global palette. gss-with-palette contains
+;; defined macros that shadow the gss-* names containing their definitions.
 
 (cl-defmacro gss-set (&rest body)
   `(gss-with-palette gss--global (gss-set ,@body)))
