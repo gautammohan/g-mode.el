@@ -30,11 +30,10 @@
   "Gmacs Faces"
   :group 'g)
 
-(setq gss--palettes nil)
-(cl-defmacro gss-defpalette (palette &optional (custom-prefix "gss") &rest specs)
+(cl-defmacro gss-defpalette (palette &optional (custom-prefix "gss-palette/") &rest specs)
   "Define a new palette where each plist entry :prefix func denotes a namespace
 containing facespec atoms reified by the function."
-  ;; prefix frame name with gss-*, do a soft-intern check first for collisions.
+  ;; prefix frame name with gss-palette/*, do a soft-intern check first for collisions.
   ;; check that "specs" is a proper plist.
   ;; check that all reifiers are valid. a symbol has to be in gss--reifiers
   ;; a lambda is passed as-is and assumed to do its own thing (check
@@ -60,7 +59,8 @@ containing facespec atoms reified by the function."
            (_ (error "GSS type \"%s\" already defined" ,type)))
        (push ',type gss--types))
      (cl-defmacro ,(intern (concat "gss-def" (symbol-name type))) (name val)
-       (gss-defspec name ',type val))))
+       ;; todo add guardfun against ctx
+       (gss-deftoken name ',type val))))
 
 (setq gss--reifiers nil)
 (defun gss-register-reifier (key fun)
@@ -72,6 +72,42 @@ already registered" key))
                                               fun))
     (_ (error "Registered reifiers are a lambda form taking a spec
 type and spec val as arguments with a quoted name"))))
+
+;; global, dynamically-scoped variable indicating the current palette
+;; other gss-* functions are applied to. This value should always have
+;; a default value of void and be modified only by a (gss-with ...) form
+(defvar gss--context)
+
+(defmacro gss-with (sheet &rest body)
+  `(let ((gss--context ,sheet))
+     ,@body))
+
+(defun gss-deftoken (name type val)
+  ;; guard
+  ;; check token name
+  ;; (set gss--context name `(,type . ,val))
+  )
+
+(defmacro gss-set (face &rest styles)
+  ;; guard
+  ;; (let-alist gss--context ...set face to inherit stylevec)
+  ;; optional: save the facespec internally if it exists? so we could
+  ;; do gss-unset to revert overwritten faces?
+  )
+
+(defmacro gss-defface (face &rest styles)
+  ;; guard
+  ;; make the face (soft intern check that it doesn't clash with a
+  ;; gss-internal def (basically is the symbol prefix gss--
+  ;; (gss-set face ,@styles)
+  )
+
+(defmacro gss-defstyle (name &rest styles)
+  ;; guard
+  ;; check that sheet doesn't have name
+  ;; make a style in gss--context with 'name'
+  ;; (gss-set face ,@styles)
+  )
 
 
 ;; gss-defspec
@@ -178,3 +214,6 @@ functions in the body."
   `(gss--defspec name :type 'color :gui ,attr :tty ,attr :palette ,palette))
 
 (provide 'gss)
+
+;; 
+;; 
