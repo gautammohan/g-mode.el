@@ -30,81 +30,90 @@
   "Gmacs Faces"
   :group 'g)
 
+;;; Palettes
+
 (setq gss--palettes nil)
 (cl-defmacro gss-defpalette (palette &optional (custom-prefix "gss") &rest specs)
-  "Define a new palette where each plist entry :prefix func denotes a namespace
-containing facespec atoms reified by the function."
+  "Define a new palette where each plist entry :prefix func denotes
+the namespace of a style.  A style can either be a lambda function
+that takes a single token argument and (maybe) returns a facespec, or
+a symbol referring to a \"registered style\" previously defined with gss-defstyle."
   ;; prefix frame name with gss-*, do a soft-intern check first for collisions.
   ;; check that "specs" is a proper plist.
-  ;; check that all reifiers are valid. a symbol has to be in gss--reifiers
+  ;; check that all styles are valid. a symbol has to be in gss--styles
   ;; a lambda is passed as-is and assumed to do its own thing (check
   ;; for a certain type).
   `(progn 
-     (put ',palette 'gss-palette ',specs)
+     (put ',palette 'gss-spec ',specs)
      (push ',palette gss--palettes)))
 
-(gss-defpalette foo :bar 2 :baz bla)
+;; should remain unbound globally and set implicitly within (gss-with ...) forms
+(defvar gss--current-palette)
 
-(setq gss--types nil)
-;; This can I think be made to accept dynamic kwargs of the form
-;; :type name for previously defined types. Those could then be
-;; resolved dynamically. possible use case: define underlines in terms
-;; of certain color specs. then gss--types becomes a partial order'
-(cl-defmacro gss-deftype (type &optional (override 'warn))
-  "Define a GSS type and its constructor function \"gss-def<type>\""
+(defmacro gss-with (palette &rest body)
+  `(let ((gss--current-palette ,palette))
+     (let-alist gss--current-palette
+       ,@body)))
+
+;;; Tokens
+
+(setq gss--tokens nil)
+(cl-defmacro gss-deftoken (token &optional (override 'warn))
+  "Define a GSS token and its constructor function \"gss-def<token>\""
   `(progn
-     (if (memq ',type gss--types)
+     (if (memq ',token gss--tokens)
          (pcase ',override
            (t nil)
-           ('warn (warn "Overriding GSS type \"%s\"" ,type))
-           (_ (error "GSS type \"%s\" already defined" ,type)))
-       (push ',type gss--types))
-     (cl-defmacro ,(intern (concat "gss-def" (symbol-name type))) (name val)
-       (gss-defspec name ',type val))))
+           ('warn (warn "Overriding existing GSS token \"%s\"" ,token))
+           (_ (error "GSS token \"%s\" already defined" ,token)))
+       (push ',token gss--tokens))
+     (cl-defmacro ,(intern (concat "gss-def" (symbol-name token))) (name val)
+       (gss--deftoken name ',token val))))
 
-(setq gss--reifiers nil)
-(defun gss-register-reifier (key fun)
+;; store tokens in an alist under 'gss-tokens prop of palette symbol
+(defun gss--deftoken (name type val)
+  (unless (get gss--current-palette (quote name))
+    (setf (alist-get (quote name) (get gss--current-palette 'gss-tokens)) `(,type ,val))))
+
+;;; Styles
+
+(defvar gss--styles nil "GSS registered styles, can be referred to by symbol in palette definitions")
+(defun gss-defstyle (key fun)
+  "A style function takes one argument, a style token, and generates a
+  an Emacs defface-compliant facespec from it. Once defined it is
+  available to all palettes definitions by its key symbol. To limit a
+  style function to a single palette, use a lambda in the palette's
+  spec definition."
   (pcase (list key fun)
-    ((guard (memq key gss--reifiers)) (error "GSS reifier \"%s\"
+    ((guard (memq key gss--styles)) (error "GSS style \"%s\"
 already registered" key))
     (`((pred symbolp) (pred functionp)) (setf (alist-get key
-                                                         gss--reifiers)
+                                                         gss--styles)
                                               fun))
-    (_ (error "Registered reifiers are a lambda form taking a spec
+    (_ (error "Registered style functions are a lambda form taking a spec
 type and spec val as arguments with a quoted name"))))
 
+(defun gss--compute-styles (palette)
+  ;; Pass all tokens defined in the palette to all its associated
+  ;; style functions.
 
-;; gss-defspec
-;; 
+  ;; NOTE: this is currently "embarrassingly parallel" but if we add the ability
+  ;; for tokens to depend on other tokens then the token loop must be ordered.
+  (pcase-dolist (`(,name ,token) (get gss--current-palette 'gss-tokens))
+    (pcase-dolist (`(,ns ,style) (get gss--current-palette 'gss-spec))
+      ;; if the style function returns a non-nil spec value, we assign it to a unique face symbol 
+      (if-let* ((spec (funcall style token))
+                ;; NOTE: it's tempting to use an uninterned symbol here but I am not sure how that interacts
+                ;; with the C-level implementation of face specs, which (I believe) assumes all face symbols
+                ;; are interned for the entire runtime of Emacs.
+                (sym (intern (string-join (mapcar #'symbol-name (list palette ns type name)) "-"))))
+          (face-spec-set sym spec)))))
 
-;; define a spec fragment which will ultimately be merged into a complete face. type must be a value specified by gss-spec-types (TODO). if palette is nil explicitly then return the uninterned spec symbol itself. TODO - also deal with non-interned palette symbols
-(cl-defmacro gss--defspec (name &key type gui tty (palette 'gss--global))
-  `(let ((spec (gensym (format "%s:" (symbol-name ,type)))))
-     (put spec 'gui ,gui)
-     (put spec 'tty ,tty)
-     (put spec 'type ,type)
-     (setf (alist-get ',name (alist-get ,type ,palette)) spec)))
+(defun gss-refresh (&rest palettes)
+  ;; recompute the specified palettes or all palettes if no args passed
+  ;; call gss--compute-styles on each one internally.
+  )
 
-;; Reify a gss spec fragment into an actual Emacs face-spec. each
-;; defined spec type must provide its own implementation function as
-;; gss--reify/<spec>, similar to the use-package convention.
-
-(cl-defun gss--reify (spec face-sym context)
-  ;; for each spec
-  ;;   reify/spec
-  ;;     if singleton: gen facename, set .style.<name> = (set-face-spec name spec)
-  ;;     else: for each (name, spec), .name = (set-face-spec name spec)
-  (let* ((reifier (intern (concat
-                           "gss--reify/"
-                           (symbol-name (get spec 'type)))))
-         (result (funcall reifier spec context)))
-    (if (hash-table-p result)
-        (map-apply (lambda (id spec) (let ((face (intern (string-join (mapcar #'symbol-name (list face-sym id)) "-"))))
-                                       (face-spec-set face spec)
-                                       (cons id face)))
-                   result)
-      (progn (face-spec-set face-sym result)
-             face-sym))))
 
 ;; Reify a color as .color.<fg,bg>, taking into account the theme variant.
 (cl-defun gss--reify/color (spec context)
@@ -123,58 +132,39 @@ type and spec val as arguments with a quoted name"))))
 
     (map-into result 'hash-table)))
 
+
+;; Reify a gss spec fragment into an actual Emacs face-spec. each
+;; defined spec type must provide its own implementation function as
+;; gss--reify/<spec>, similar to the use-package convention.
+
 ;; Reify a font attribute directly
 (cl-defun gss--reify/attr (spec context)
   `((((type graphic)) . ,(get spec 'gui))
     (((type tty)) . ,(get spec 'tty))))
 
-;; Compute each spec as a face according to the context. The
-;; namespace structure of each spec is cloned under .style in the palette
-(cl-defun gss--update-palettes (context &key (palettes '(gss--global)))
-  (cl-loop for palette in palettes do
-           (cl-loop for type in gss-spec-types do
-                    (cl-loop for (name . spec) in  (alist-get type (symbol-value palette))
-                             for prefix = (intern (string-join (mapcar #'symbol-name (list palette type name)) "-"))
-                             do (setf (alist-get name (alist-get type (alist-get 'style (symbol-value palette))))
-                                      (gss--reify spec prefix context))))))
+;;; Style Functions
 
-(cl-defun gss--setstyle (style palette)
-  (setf (alist-get style (alist-get 'style palette))  style))
+(defmacro gss-set (face &rest styles)
+  `(progn (face-spec-reset-face ,face)
+          (set-face-attribute ,face nil :inherit (list ,@styles))))
 
-;; Provide a palette context to resolve style attribute definitions
-;; for all gss-* functions in the body.
-(cl-defmacro gss-with-palette (palette &rest body)
-  "Use the provided palette to resolve style attributes for the gss
-functions in the body."
-  `(cl-macrolet ((gss-set (face &rest styles)
-                   `(progn (face-spec-reset-face ,face)
-                           (set-face-attribute ,face nil :inherit (list ,@styles))))
-                 (gss-defface (face doc &rest styles)
-                   `(progn (defface ,face nil ,doc)
-                           (gss-set ',face ,@styles)))
-                 (gss-defstyle (face &rest styles)
-                   `(progn (gss-defface ,face "GSS Internal Style Def" ,@styles)
-                           (gss--setstyle ',face ',,palette))))
-     (let-alist (alist-get 'style ,palette)
-       ,@body)))
+(defmacro gss-defface (face doc &rest styles)
+  `(progn (defface ,face nil ,doc)
+          (gss-set ',face ,@styles)))
 
-;; Each of the global gss-* functions expands to gss-with-palette
-;; pre-filled with the global palette. gss-with-palette contains
-;; defined macros that shadow the gss-* names containing their definitions.
-
-(cl-defmacro gss-set (&rest body)
-  `(gss-with-palette gss--global (gss-set ,@body)))
-
-(cl-defmacro gss-defface (&rest body)
-  `(gss-with-palette gss--global (gss-defface ,@body)))
-
-(cl-defmacro gss-defstyle (&rest body)
-  `(gss-with-palette gss--global (gss-defstyle ,@body)))
-
-(cl-defmacro gss-defcolor (name color &key (palette 'gss--global))
-  `(gss--defspec name :type 'color :gui ,color :tty ,color :palette ,palette))
-
-(cl-defmacro gss-defattr (name attr &key (palette 'gss--global))
-  `(gss--defspec name :type 'color :gui ,attr :tty ,attr :palette ,palette))
+(defmacro gss-defalias (name &rest styles)
+  ;; NOTE: we don't need to guard against recursive or mutually
+  ;; recursive style aliases since name lookups are eager:
+  ;;
+  ;; (defstyle foo .foo) ;error: foo do does not exist
+  ;; or
+  ;; (defstyle foo .bar) ;error: bar does not exist
+  ;; (defstyle bar .foo)
+  ;;
+  ;; Additionally, since styles cannot be redefined or removed, this case cannot occur:
+  ;;
+  ;; (defstyle foo .existing.thing)
+  ;; (defstyle foo .foo) ;error: foo already defined.
+  )
 
 (provide 'gss)
