@@ -47,30 +47,31 @@ accepts an alist containing multiple style specs. Multiple :spec
 kwargs can be passed, and later definitions override matching earlier
 ones. "
   (when (get palette 'gss-palette)
-    (signal 'gss-bad-definition (format "Palette %s already defined" palette)))
+    (signal 'gss-bad-definition (list (format "palette %s already defined" palette))))
+  (when (not (plistp specs))
+    (signal 'gss-bad-parse (list "spec arguments must be a plist")))
   (condition-case-unless-debug err
       (let ((parse (lambda (style-spec)
                      ;; parse a style spec (ns . style) where ns is a namespace symbol and style is either a lambda or a symbol key in gss--styles
                      (pcase style-spec
-                       (`(,((and (pred symbolp) ns) . ,(and (pred symbolp) style)))
+                       (`(,(and (pred #'symbolp) ns) . ,(and (pred #'symbolp) style))
                         (if-let ((stylefun (alist-get style gss--styles)))
                             (setf (alist-get ns (get palette 'gss-spec)) stylefun)
-                          (signal 'gss-bad-definition (format "Undefined style %s" style))))
-                       (`(,((and (pred symbolp) ns) . ,(and (pred functionp) style)))
+                          (signal 'gss-bad-definition (list (format "Undefined style %s" style)))))
+                       (`(,(and (pred #'symbolp) ns) . ,(and (pred #'functionp) style))
                         (setf (alist-get ns (get palette 'gss-spec)) stylefun))
-                       (_ (signal 'gss-bad-parse (format  "Unknown style spec: %s" style-spec)))))))
+                       (_ (signal 'gss-bad-parse (list (format  "Unknown style spec: %s" style-spec))))))))
         (cl-loop for arg on specs by #'cddr
                  do (pcase arg
                       (`(:style ,(and (pred listp) styles)) (mapc parse styles))
                       (`(:style ,style) (funcall parse style))
-                      (`(prop _) (signal 'gss-bad-parse (format "Unknown kwarg %s"prop))))))
+                      (`(prop _) (signal 'gss-bad-parse (list (format "Unknown kwarg %s" prop)))))))
     ;; Remove all gss-* symbol props before rethrowing so defpalette doesn't partially initialize a symbol
     ;; Note: This rethrow does not preserve the original stack trace, for that behavior use handler-bind instead of condition-case
     (error (cl-remprop palette 'gss-spec)
            (signal (car err) (cdr err)))
-    (:success (put palette 'gss-palette t)))
-  (when (not (plistp specs))
-    (signal 'gss-bad-parse "gss-palette args must be a plist")))
+    (:success (when specs
+                (put palette 'gss-palette t)))))
 
 ;; must remain unbound globally and is only set implicitly within (gss-with ...) forms
 (defvar gss--current-palette)
@@ -101,7 +102,7 @@ ones. "
 
 ;;; Styles
 
-(setq gss--styles nil "GSS registered styles, can be referred to by symbol in palette definitions")
+(defvar gss--styles nil "GSS registered styles, can be referred to by symbol in palette definitions")
 (defun gss-defstyle (key fun)
   "A style function takes one argument, a style token, and generates a
   an Emacs defface-compliant facespec from it. Once defined it is
@@ -110,7 +111,7 @@ ones. "
   spec definition."
   (pcase (list key fun)
     ((guard (memq key gss--styles)) (error "GSS style \"%s\" already registered" key))
-    (`((pred symbolp) (pred functionp)) (setf (alist-get key gss--styles) fun))
+    (`(,(pred #'symbolp) . ,(pred #'functionp)) (setf (alist-get key gss--styles) fun))
     (_ (error "Registered style functions are a lambda form taking a spec
 type and spec val as arguments with a quoted name"))))
 
