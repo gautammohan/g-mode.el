@@ -46,6 +46,8 @@ gss-defstyle) or a lambda to directly pass a stylefun. :spec also
 accepts an alist containing multiple style specs. Multiple :spec
 kwargs can be passed, and later definitions override matching earlier
 ones. "
+  (unless specs
+    (signal 'gss-bad-definition (list "defpalette with no specs")))
   (when (get palette 'gss-palette)
     (signal 'gss-bad-definition (list (format "palette %s already defined" palette))))
   (when (not (plistp specs))
@@ -70,8 +72,7 @@ ones. "
     ;; Note: This rethrow does not preserve the original stack trace, for that behavior use handler-bind instead of condition-case
     (error (cl-remprop palette 'gss-spec)
            (signal (car err) (cdr err)))
-    (:success (when specs
-                (put palette 'gss-palette t)))))
+    (:success (put palette 'gss-palette t))))
 
 ;; must remain unbound globally and is only set implicitly within (gss-with ...) forms
 (defvar gss--current-palette)
@@ -82,16 +83,14 @@ ones. "
 
 ;;; Tokens
 
+(defconst gss--forbidden-tokens '(token style face alias palette) "This list represents token names that would shadow existing gss-def* functions")
 (setq gss--tokens nil)
-(cl-defmacro gss-deftoken (token &optional (override 'warn))
+(cl-defmacro gss-deftoken (token)
   "Define a GSS token and its constructor function \"gss-def<token>\""
   `(progn
-     (if (memq ',token gss--tokens)
-         (pcase ',override
-           (t nil)
-           ('warn (warn "Overriding existing GSS token \"%s\"" ,token))
-           (_ (error "GSS token \"%s\" already defined" ,token)))
-       (push ',token gss--tokens))
+     (cond ((memq ',token gss--tokens) (signal 'gss-bad-definition (format  "token \"%s\" already defined" ',token)))
+           ((memq ',token gss--forbidden-tokens) (signal 'gss-bad-definition (format  "token \"%s\" cannot be one of %s" ',token gss--forbidden-tokens)))
+           (t  (push ',token gss--tokens)))
      (cl-defmacro ,(intern (concat "gss-def" (symbol-name token))) (name val)
        (gss--deftoken name ',token val))))
 
@@ -109,11 +108,10 @@ ones. "
   available to all palettes definitions by its key symbol. To limit a
   style function to a single palette, use a lambda in the palette's
   spec definition."
-  (pcase (list key fun)
-    ((guard (memq key gss--styles)) (error "GSS style \"%s\" already registered" key))
-    (`(,(pred #'symbolp) . ,(pred #'functionp)) (setf (alist-get key gss--styles) fun))
-    (_ (error "Registered style functions are a lambda form taking a spec
-type and spec val as arguments with a quoted name"))))
+  (pcase (cons key fun)
+    ((guard (assq key gss--styles)) (signal 'gss-bad-definition (list (format  "style \"%s\" already defined" key))))
+    (`(,(pred symbolp) . ,(pred functionp)) (setf (alist-get key gss--styles) fun))
+    (_ (signal 'gss-bad-parse (list "Registered style functions are a lambda form taking a spec type and spec val as arguments with a quoted name")))))
 
 (defun gss--compute-styles (palette)
   ;; NOTE: this is currently "embarrassingly parallel" but if we add the ability
