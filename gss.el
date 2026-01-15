@@ -37,7 +37,10 @@
 (defun gss--symcat (&rest symbols)
   (intern (string-join (mapcar #'symbol-name symbols) "-")))
 
-(cl-defun gss-defpalette (palette &rest specs)
+(cl-defmacro gss-defpalette (palette &rest specs)
+  `(gss--defpalette ',palette (list ,@specs)))
+
+(cl-defun gss--defpalette (palette specs)
   "Define a new palette with associated style specification.
 Each style spec (specified using :spec) is a cons cell (NS . STYLE)
 where NS is a symbol indicating the palette namespace of STYLE, which
@@ -46,33 +49,36 @@ gss-defstyle) or a lambda to directly pass a stylefun. :spec also
 accepts an alist containing multiple style specs. Multiple :spec
 kwargs can be passed, and later definitions override matching earlier
 ones. "
-  (unless specs
-    (signal 'gss-bad-definition (list "defpalette with no specs")))
-  (when (get palette 'gss-palette)
-    (signal 'gss-bad-definition (list (format "palette %s already defined" palette))))
-  (when (not (plistp specs))
-    (signal 'gss-bad-parse (list "spec arguments must be a plist")))
-  (condition-case-unless-debug err
-      (let ((parse (lambda (style-spec)
+  (cond ((not (symbolp palette)) (signal 'gss-bad-parse (list "palette definition must be a symbol")))
+        ((null specs) (signal 'gss-bad-definition (list "defpalette with empty style specs")))
+        ((get palette 'gss-palette) (signal 'gss-bad-definition (list (format "palette %s already defined" palette))))
+        ((not (plistp specs)) (signal 'gss-bad-parse (list "spec arguments must be a plist")))
+        (t nil))
+  (condition-case err
+      (cl-flet ((improper-consp (cell)
+                  ;; match a sole dotted pair (a . b) meant to be an alist member
+                  (and (consp cell) (not (consp (cdr cell)))))
+                (parse-style (style-spec)
                      ;; parse a style spec (ns . style) where ns is a namespace symbol and style is either a lambda or a symbol key in gss--styles
                      (pcase style-spec
-                       (`(,(and (pred #'symbolp) ns) . ,(and (pred #'symbolp) style))
+                       (`(,(and (pred symbolp) ns) . ,(and (pred symbolp) style))
                         (if-let ((stylefun (alist-get style gss--styles)))
                             (setf (alist-get ns (get palette 'gss-spec)) stylefun)
                           (signal 'gss-bad-definition (list (format "Undefined style %s" style)))))
-                       (`(,(and (pred #'symbolp) ns) . ,(and (pred #'functionp) style))
+                       (`(,(and (pred symbolp) ns) . ,(and (pred functionp) style))
                         (setf (alist-get ns (get palette 'gss-spec)) stylefun))
-                       (_ (signal 'gss-bad-parse (list (format  "Unknown style spec: %s" style-spec))))))))
+                       (_ (signal 'gss-bad-parse (list (format  "Unknown style spec: %s" style-spec)))))))
         (cl-loop for arg on specs by #'cddr
                  do (pcase arg
-                      (`(:style ,(and (pred listp) styles)) (mapc parse styles))
-                      (`(:style ,style) (funcall parse style))
+                      (`(:style ,(and (pred improper-consp) style)) (parse-style style))
+                      (`(:style ,(and (pred listp) styles)) (mapc parse-style styles))
                       (`(prop _) (signal 'gss-bad-parse (list (format "Unknown kwarg %s" prop)))))))
     ;; Remove all gss-* symbol props before rethrowing so defpalette doesn't partially initialize a symbol
     ;; Note: This rethrow does not preserve the original stack trace, for that behavior use handler-bind instead of condition-case
     (error (cl-remprop palette 'gss-spec)
            (signal (car err) (cdr err)))
-    (:success (put palette 'gss-palette t))))
+    (:success
+     (put palette 'gss-palette t))))
 
 ;; must remain unbound globally and is only set implicitly within (gss-with ...) forms
 (defvar gss--current-palette)
@@ -83,7 +89,7 @@ ones. "
 
 ;;; Tokens
 
-(defconst gss--forbidden-tokens '(token style face alias palette) "This list represents token names that would shadow existing gss-def* functions")
+(defconst gss--forbidden-tokens '(token style face alias palette) "This list contains token names that would shadow existing gss-def* functions")
 (setq gss--tokens nil)
 (cl-defmacro gss-deftoken (token)
   "Define a GSS token and its constructor function \"gss-def<token>\""
