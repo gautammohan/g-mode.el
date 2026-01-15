@@ -72,7 +72,8 @@ ones. "
                  do (pcase arg
                       (`(:style ,(and (pred improper-consp) style)) (parse-style style))
                       (`(:style ,(and (pred listp) styles)) (mapc parse-style styles))
-                      (`(prop _) (signal 'gss-bad-parse (list (format "Unknown kwarg %s" prop)))))))
+                      (`(,prop _) (signal 'gss-bad-parse (list (format "Unknown kwarg %s" prop))))
+                      (styledef (signal 'gss-bad-parse (list (format "Unknown style spec %s" styledef)))))))
     ;; Remove all gss-* symbol props before rethrowing so defpalette doesn't partially initialize a symbol
     ;; Note: This rethrow does not preserve the original stack trace, for that behavior use handler-bind instead of condition-case
     (error (cl-remprop palette 'gss-spec)
