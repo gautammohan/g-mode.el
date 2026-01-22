@@ -81,8 +81,10 @@ ones. "
     (:success
      (put palette 'gss-palette t))))
 
-;; must remain unbound globally and is only set implicitly within (gss-with ...) forms
-(defvar gss--current-palette)
+;; Note: gss--current-palette is initialized with a default value to ensure Emacs permanently marks it as a special (dynamically scoped) variable everywhere instead of just locally in this file. However, we don't want it to be bound globally, only within (gss-with ...) forms or explicitly in a let form, hence the following call to makunbound, which clears the value but preserves its special status.
+(defvar gss--current-palette nil)
+(makunbound 'gss--current-palette)
+
 (defmacro gss-with (palette &rest body)
   `(let ((gss--current-palette ,palette))
      (let-alist (get gss--current-palette 'gss-styles)
